@@ -1,78 +1,16 @@
 #include <iostream>
+#include <fstream>
 #include <cstring>
 #include <string>
-#include <fstream>
 #include <cstdio>
-#include <algorithm>
 
 using std::string;
 using std::cin;
 using std::cout;
 
-// Simple implementation that stores everything in memory
-// This is a minimal viable solution
-
-template<typename T>
-class Vector {
-private:
-    T* data;
-    int capacity;
-    int length;
-    
-    void resize() {
-        capacity = capacity == 0 ? 4 : capacity * 2;
-        T* newData = new T[capacity];
-        for (int i = 0; i < length; i++) {
-            newData[i] = data[i];
-        }
-        delete[] data;
-        data = newData;
-    }
-    
-public:
-    Vector() : data(nullptr), capacity(0), length(0) {}
-    
-    ~Vector() {
-        delete[] data;
-    }
-    
-    void push_back(const T& value) {
-        if (length == capacity) resize();
-        data[length++] = value;
-    }
-    
-    T& operator[](int index) {
-        return data[index];
-    }
-    
-    const T& operator[](int index) const {
-        return data[index];
-    }
-    
-    int size() const {
-        return length;
-    }
-    
-    void clear() {
-        length = 0;
-    }
-    
-    bool empty() const {
-        return length == 0;
-    }
-    
-    void erase(int index) {
-        for (int i = index; i < length - 1; i++) {
-            data[i] = data[i + 1];
-        }
-        length--;
-    }
-    
-    T* begin() { return data; }
-    T* end() { return data + length; }
-    const T* begin() const { return data; }
-    const T* end() const { return data + length; }
-};
+const int MAX_USERS = 10000;
+const int MAX_TRAINS = 5000;
+const int MAX_ORDERS = 100000;
 
 struct User {
     char username[25];
@@ -80,11 +18,8 @@ struct User {
     char name[35];
     char mailAddr[35];
     int privilege;
+    bool exists;
     bool loggedIn;
-    
-    User() : privilege(0), loggedIn(false) {
-        username[0] = password[0] = name[0] = mailAddr[0] = '\0';
-    }
 };
 
 struct Train {
@@ -99,10 +34,7 @@ struct Train {
     int saleDate[2];
     char type;
     bool released;
-    
-    Train() : stationNum(0), seatNum(0), startTime(0), type('G'), released(false) {
-        trainID[0] = '\0';
-    }
+    bool exists;
 };
 
 struct Order {
@@ -113,19 +45,18 @@ struct Order {
     int num;
     int fromIdx, toIdx;
     int price;
-    int status; // 0: success, 1: pending, 2: refunded
-    
-    Order() : id(0), date(0), num(0), fromIdx(0), toIdx(0), price(0), status(0) {
-        username[0] = trainID[0] = '\0';
-    }
+    int status;
+    Order* next;
 };
 
 class TicketSystem {
 private:
-    Vector<User> users;
-    Vector<Train> trains;
-    Vector<Order> orders;
-    int orderIdCounter;
+    User* users;
+    int userCount;
+    Train* trains;
+    int trainCount;
+    Order* orders;
+    int orderCount;
     
     int parseTime(const string& s) {
         return ((s[0] - '0') * 10 + (s[1] - '0')) * 60 + (s[3] - '0') * 10 + (s[4] - '0');
@@ -161,29 +92,88 @@ private:
         pos += param.length() + 2;
         size_t end = cmd.find(" -", pos);
         string result = end == string::npos ? cmd.substr(pos) : cmd.substr(pos, end - pos);
-        // Trim trailing whitespace
-        while (!result.empty() && result.back() == ' ') {
-            result.pop_back();
-        }
+        while (!result.empty() && result.back() == ' ') result.pop_back();
         return result;
     }
     
     int findUser(const string& username) {
-        for (int i = 0; i < users.size(); i++) {
-            if (strcmp(users[i].username, username.c_str()) == 0) return i;
+        for (int i = 0; i < userCount; i++) {
+            if (users[i].exists && strcmp(users[i].username, username.c_str()) == 0) return i;
         }
         return -1;
     }
     
     int findTrain(const string& trainID) {
-        for (int i = 0; i < trains.size(); i++) {
-            if (strcmp(trains[i].trainID, trainID.c_str()) == 0) return i;
+        for (int i = 0; i < trainCount; i++) {
+            if (trains[i].exists && strcmp(trains[i].trainID, trainID.c_str()) == 0) return i;
         }
         return -1;
     }
     
+    void loadData() {
+        std::ifstream uf("users.dat", std::ios::binary);
+        if (uf) {
+            uf.read((char*)&userCount, sizeof(userCount));
+            uf.read((char*)users, sizeof(User) * userCount);
+            uf.close();
+        } else {
+            userCount = 0;
+        }
+        
+        std::ifstream tf("trains.dat", std::ios::binary);
+        if (tf) {
+            tf.read((char*)&trainCount, sizeof(trainCount));
+            tf.read((char*)trains, sizeof(Train) * trainCount);
+            tf.close();
+        } else {
+            trainCount = 0;
+        }
+        
+        std::ifstream of("orders.dat", std::ios::binary);
+        if (of) {
+            of.read((char*)&orderCount, sizeof(orderCount));
+            of.read((char*)orders, sizeof(Order) * orderCount);
+            of.close();
+        } else {
+            orderCount = 0;
+        }
+    }
+    
+    void saveData() {
+        std::ofstream uf("users.dat", std::ios::binary);
+        uf.write((char*)&userCount, sizeof(userCount));
+        uf.write((char*)users, sizeof(User) * userCount);
+        uf.close();
+        
+        std::ofstream tf("trains.dat", std::ios::binary);
+        tf.write((char*)&trainCount, sizeof(trainCount));
+        tf.write((char*)trains, sizeof(Train) * trainCount);
+        tf.close();
+        
+        std::ofstream of("orders.dat", std::ios::binary);
+        of.write((char*)&orderCount, sizeof(orderCount));
+        of.write((char*)orders, sizeof(Order) * orderCount);
+        of.close();
+    }
+    
 public:
-    TicketSystem() : orderIdCounter(0) {}
+    TicketSystem() {
+        users = new User[MAX_USERS]();
+        trains = new Train[MAX_TRAINS]();
+        orders = new Order[MAX_ORDERS]();
+        
+        loadData();
+        for (int i = 0; i < userCount; i++) {
+            users[i].loggedIn = false;
+        }
+    }
+    
+    ~TicketSystem() {
+        saveData();
+        delete[] users;
+        delete[] trains;
+        delete[] orders;
+    }
     
     void run() {
         string line;
@@ -207,27 +197,29 @@ public:
                     continue;
                 }
                 
-                if (users.size() == 0) {
-                    User user;
+                if (userCount == 0) {
+                    User& user = users[userCount++];
                     strcpy(user.username, u.c_str());
                     strcpy(user.password, p.c_str());
                     strcpy(user.name, n.c_str());
                     strcpy(user.mailAddr, m.c_str());
                     user.privilege = 10;
-                    users.push_back(user);
+                    user.exists = true;
+                    user.loggedIn = false;
                     cout << "0\n";
                 } else {
                     int curIdx = findUser(c);
                     if (curIdx == -1 || !users[curIdx].loggedIn || users[curIdx].privilege <= g) {
                         cout << "-1\n";
                     } else {
-                        User user;
+                        User& user = users[userCount++];
                         strcpy(user.username, u.c_str());
                         strcpy(user.password, p.c_str());
                         strcpy(user.name, n.c_str());
                         strcpy(user.mailAddr, m.c_str());
                         user.privilege = g;
-                        users.push_back(user);
+                        user.exists = true;
+                        user.loggedIn = false;
                         cout << "0\n";
                     }
                 }
@@ -305,12 +297,14 @@ public:
                     continue;
                 }
                 
-                Train train;
+                Train& train = trains[trainCount++];
                 strcpy(train.trainID, i.c_str());
                 train.stationNum = std::stoi(getParam(line, "-n"));
                 train.seatNum = std::stoi(getParam(line, "-m"));
                 train.startTime = parseTime(getParam(line, "-x"));
                 train.type = getParam(line, "-y")[0];
+                train.released = false;
+                train.exists = true;
                 
                 string s = getParam(line, "-s");
                 size_t pos = 0;
@@ -351,7 +345,6 @@ public:
                 train.saleDate[0] = parseDate(d.substr(0, pos));
                 train.saleDate[1] = parseDate(d.substr(pos + 1));
                 
-                trains.push_back(train);
                 cout << "0\n";
             }
             else if (cmd == "release_train") {
@@ -424,7 +417,7 @@ public:
                 if (idx == -1 || trains[idx].released) {
                     cout << "-1\n";
                 } else {
-                    trains.erase(idx);
+                    trains[idx].exists = false;
                     cout << "0\n";
                 }
             }
@@ -450,10 +443,11 @@ public:
                 cout << "-1\n";
             }
             else if (cmd == "clean") {
-                users.clear();
-                trains.clear();
-                orders.clear();
-                orderIdCounter = 0;
+                userCount = 0;
+                trainCount = 0;
+                orderCount = 0;
+                for (int i = 0; i < MAX_USERS; i++) users[i].exists = false;
+                for (int i = 0; i < MAX_TRAINS; i++) trains[i].exists = false;
                 cout << "0\n";
             }
             else if (cmd == "exit") {
